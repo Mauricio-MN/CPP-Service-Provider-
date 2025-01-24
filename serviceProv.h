@@ -37,7 +37,7 @@ public:
 template <class T>
 class ServiceProvider{
 private:
-    std::unordered_map<std::string,std::vector<T>> objs;
+    std::unordered_map<std::string,std::vector<std::shared_ptr<T>>> objs;
     std::unordered_map<std::string,CONTEXT> contextMap;
     std::thread garbageCollector_thread;
     std::atomic_bool collect;
@@ -57,6 +57,10 @@ public:
     }
 
     ~ServiceProvider(){
+        collect = false;
+        if(garbageCollector_thread.joinable()){
+            garbageCollector_thread.join();
+        }
     }
 
     CONTEXT registerContext(std::string contextID){
@@ -89,11 +93,11 @@ public:
         CONTEXT resultRef = registerContext(context);
 
         if(objs.find(context.getContext()) == objs.end()){
-            std::vector<T> classVect;
+            std::vector<std::shared_ptr<T>> classVect;
             classVect.push_back(getNewInstance(callClass));
             objs[context.getContext()] = classVect;
         } else {
-            std::vector<T>& classT = objs[context.getContext()];
+            std::vector<std::shared_ptr<T>>& classT = objs[context.getContext()];
             classT.push_back(getNewInstance(callClass));
         }
 
@@ -113,11 +117,11 @@ public:
         CONTEXT resultRef = registerContext(context);
 
         if(objs.find(context.getContext()) == objs.end()){
-            std::vector<T> classVect;
+            std::vector<std::shared_ptr<T>> classVect;
             classVect.push_back(getNewInstance<AlternativeClass>());
             objs[context.getContext()] = classVect;
         } else {
-            std::vector<T>& classT = objs[context.getContext()];
+            std::vector<std::shared_ptr<T>>& classT = objs[context.getContext()];
             classT.push_back(getNewInstance<AlternativeClass>());
         }
 
@@ -136,11 +140,11 @@ public:
         CONTEXT resultRef = registerContext(context);
 
         if(objs.find(context.getContext()) == objs.end()){
-            std::vector<T> classVect;
+            std::vector<std::shared_ptr<T>> classVect;
             classVect.push_back(obj);
             objs[context.getContext()] = classVect;
         } else {
-            std::vector<T>& classT = objs[context.getContext()];
+            std::vector<std::shared_ptr<T>>& classT = objs[context.getContext()];
             classT.push_back(obj);
         }
 
@@ -160,8 +164,8 @@ public:
             std::__throw_logic_error("no instace class for context" + context.getName());
         } else {
             if(objs.find(context.getContext()) != objs.end()){
-                for (T& instance : objs[context.getContext()]) {
-                    (instance.*method)(args...);
+                for (std::shared_ptr<T>& instance : objs[context.getContext()]) {
+                    (instance.get().*method)(args...);
                 }
             }
         }
@@ -182,8 +186,8 @@ public:
         } else {
             std::vector<typename std::result_of<Method(T, Args...)>::type> result;
             if(objs.find(context.getContext()) != objs.end()){
-                for (T& instance : objs[context.getContext()]) {
-                    result.push_back((instance.*method)(args...));
+                for (std::shared_ptr<T>& instance : objs[context.getContext()]) {
+                    result.push_back((instance.get().*method)(args...));
                 }
             }
             return result;
@@ -197,22 +201,22 @@ public:
 
     //get new instance off service by call class type
     template <class CallClass>
-    T getNewInstance(CallClass& callClass){
+    std::shared_ptr<T> getNewInstance(CallClass& callClass){
         return getNewInstance(typeid(callClass));
     }
 
     template <typename CallClassType>
-    T getNewInstance(){
+    std::shared_ptr<T> getNewInstance(){
         return getNewInstance(typeid(CallClassType));
     }
 
     //get new instance off service by call class type
-    virtual T getNewInstance(std::type_info& type){
+    virtual std::shared_ptr<T> getNewInstance(std::type_info& type){
         //Example
         if(type == typeid(T)){
-            return T();
+            return std::make_shared<T>();
         } else {
-            return T();
+            return std::make_shared<T>();
         }
     }
 
